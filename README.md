@@ -2,7 +2,7 @@
 
 **A time-capsule letters & photos app for friends — write every day, unlock together on the day it matters.**
 
-GradVault lets a group of friends write letters and capture photos/videos to each other daily, all sealed away until one fixed date you choose. When that day comes, each memory still has its own lock — a passcode or a riddle the recipient has to guess — before it's finally revealed. Built as a final-year project at FAST NUCES.
+GradVault lets a group of friends write letters and capture photos/videos to each other daily, all sealed away until one fixed date you choose. When that day comes, each memory still has its own lock — a passcode or a riddle the recipient has to guess — before it's finally revealed. Built as a memory project at FAST NUCES.
 
 ---
 
