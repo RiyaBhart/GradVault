@@ -1,0 +1,2 @@
+# This directory holds Alembic migration scripts.
+# Generated files are named: <revision_id>_<slug>.py
