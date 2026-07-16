@@ -1,101 +1,101 @@
-# GradVault
+# 🎓 GradVault
 
-A time-capsule letters & photos app for friends — FYP project.
+**A time-capsule letters & photos app for friends — write every day, unlock together on the day it matters.**
 
-Stack: **FastAPI** (Python) · **PostgreSQL** · **React 18** (Vite) · No Docker.
+GradVault lets a group of friends write letters and capture photos/videos to each other daily, all sealed away until one fixed date you choose. When that day comes, each memory still has its own lock — a passcode or a riddle the recipient has to guess — before it's finally revealed. Built as a memory project at FAST NUCES.
 
 ---
 
-## Prerequisites
+## ✨ Features
 
-| Tool | Version |
+- **Daily letters** — write to a friend (or a group) every day; entries accumulate into a growing thread
+- **Live photo & video capture** — take pictures/videos directly through the camera, front or back, with an optional gallery upload fallback
+- **Two-layer locking** — nothing is visible before a global unlock date *and* until the recipient solves the per-entry passcode or riddle
+- **Notes & captions** — attach a short note to any photo or video
+- **Background music** — attach a YouTube-embedded song to a letter that plays on reveal
+- **Invite-link sharing** — no public search or discovery; threads are joined via a shareable invite code
+- **Pair & group threads** — one-on-one or shared with multiple friends
+- **Streaks, stickers, nicknames** — a little gamification and personality throughout
+- **Light / dark mode** — dark mode with a neon accent theme, light mode warm and parchment-toned
+- **Countdown timer** — always know how long until everything unlocks
+- **Ambient background music** — a soft looping track site-wide, with a one-click mute
+
+---
+
+## 🛠 Tech Stack
+
+| Layer | Technology |
 |---|---|
-| Python | 3.10 + |
-| Node.js | 18 + |
-| PostgreSQL | 14 + (running locally) |
-| PowerShell | 5.1 + (7+ recommended) |
+| Backend | FastAPI (Python), SQLAlchemy, Alembic |
+| Database | PostgreSQL |
+| Frontend | React 18 + Vite |
+| Auth | JWT (passlib/bcrypt for hashing) |
+| Media | Native browser camera capture (`getUserMedia`, `MediaRecorder`) |
+| Music | YouTube IFrame Player API (per-letter songs) + local royalty-free track (ambient) |
+| Deployment | Render/Railway (backend + Postgres), Vercel/Netlify (frontend) — **no Docker** |
 
 ---
 
-## 1 · Create the PostgreSQL database
+## 📁 Project Structure
 
-Open **psql** (or pgAdmin) and run once:
-
-```sql
-CREATE DATABASE gradvault;
+```
+gradvault/
+├── backend/
+│   ├── app/
+│   │   ├── models/       # SQLAlchemy models
+│   │   ├── routers/      # FastAPI route handlers
+│   │   ├── core/         # config, security/JWT helpers
+│   │   └── main.py
+│   ├── alembic/          # DB migrations
+│   ├── storage/          # uploaded media (gitignored)
+│   ├── requirements.txt
+│   └── .env.example
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   └── package.json
+├── README.md
+└── DEPLOY.md
 ```
 
 ---
 
-## 2 · Backend setup
+## 🚀 Getting Started (Local Development)
 
-All commands below are run from the **repo root** in PowerShell.
+No Docker required — everything runs natively. Commands below are PowerShell-compatible (Windows).
 
-### 2-a Create and activate a virtual environment
+### Prerequisites
+- Python 3.11+
+- Node.js 18+
+- PostgreSQL installed and running locally
 
-```powershell
-python -m venv backend\.venv
-backend\.venv\Scripts\Activate.ps1
-```
-
-> If you get a script-execution error, run this first (once per machine):
-> ```powershell
-> Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-> ```
-
-### 2-b Install dependencies
+### 1. Clone the repo
 
 ```powershell
-pip install -r backend\requirements.txt
+git clone https://github.com/<your-username>/gradvault.git
+cd gradvault
 ```
 
-### 2-c Create your `.env` file
-
-```powershell
-Copy-Item backend\.env.example backend\.env
-```
-
-Open `backend\.env` in any editor and fill in your real values:
-
-```
-DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/gradvault
-JWT_SECRET=<paste output of: python -c "import secrets; print(secrets.token_hex(32))">
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-```
-
-### 2-d Run Alembic migrations
-
-Alembic needs `app/` on the Python path. Run from the `backend/` directory with `PYTHONPATH` set:
+### 2. Backend setup
 
 ```powershell
 cd backend
-$env:PYTHONPATH = "."
-.venv\Scripts\alembic.exe revision --autogenerate -m "create_users_table"
-.venv\Scripts\alembic.exe upgrade head
-cd ..
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+copy .env.example .env
+# edit .env with your local DATABASE_URL, JWT_SECRET, etc.
+
+python -m alembic upgrade head
+uvicorn app.main:app --reload
 ```
 
-> **If you see `password authentication failed`**: your Postgres password differs from the default. Edit `backend\.env` → `DATABASE_URL` with the correct user/password, then re-run the commands above.
+Backend runs at `http://localhost:8000`.
 
-This creates the `users` table (and any future tables) in `gradvault`.
+### 3. Frontend setup
 
-### 2-e Start the backend
-
-```powershell
-cd backend
-$env:PYTHONPATH = "."
-.venv\Scripts\uvicorn.exe app.main:app --reload
-```
-
-The API is now at **http://127.0.0.1:8000**.  
-Interactive docs: **http://127.0.0.1:8000/docs**
-
----
-
-## 3 · Frontend setup
-
-Open a **second** PowerShell window (leave uvicorn running in the first).
+Open a new terminal:
 
 ```powershell
 cd frontend
@@ -103,101 +103,43 @@ npm install
 npm run dev
 ```
 
-The React app is now at **http://localhost:5173**.
+Frontend runs at `http://localhost:5173`.
+
+### 4. Try it out
+
+1. Sign up with two test accounts (use an incognito window for the second).
+2. Create a thread and generate an invite link.
+3. Accept the invite with the second account.
+4. Write a letter, take a live photo, set a lock.
+5. Set `unlock_date` in `site_config` to a past date (directly in the DB) to test unlocking without waiting.
 
 ---
 
-## 4 · Manual smoke test
+## 🔒 Security Notes
 
-### 4-a Confirm the API is up
+- Locked content (letters, photos, videos, notes) is **never** sent to the client until the server independently verifies both the global unlock date and the recipient's per-entry unlock record — there is no client-side hiding of content.
+- Passwords and passcodes are hashed with bcrypt; nothing sensitive is logged.
+- File uploads are validated by content-type and size before storage, and stored outside any publicly served directory.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health
-```
-
-Expected: `{ status: ok }`
-
-### 4-b Sign up a user
-
-```powershell
-$body = '{"username":"riya","nickname":"Riya","password":"supersecret123","avatar_sticker":"🌙"}'
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/auth/signup `
-  -ContentType 'application/json' -Body $body
-```
-
-Expected: a JSON object with `id`, `username`, `nickname`, `avatar_sticker`, `streak_count`, `created_at` — **no** `password_hash`.
-
-### 4-c Log in and capture the token
-
-```powershell
-$login = '{"username":"riya","password":"supersecret123"}'
-$resp = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/auth/login `
-  -ContentType 'application/json' -Body $login
-$token = $resp.access_token
-Write-Host "Token: $token"
-```
-
-### 4-d Hit the protected route
-
-```powershell
-Invoke-RestMethod -Uri http://127.0.0.1:8000/users/me `
-  -Headers @{ Authorization = "Bearer $token" }
-```
-
-Expected: the same user object as step 4-b.
-
-### 4-e Confirm rejection without a token
-
-```powershell
-Invoke-RestMethod -Uri http://127.0.0.1:8000/users/me
-```
-
-Expected: HTTP 401.
-
-### 4-f Test the frontend
-
-1. Open http://localhost:5173
-2. Click **Create one** → fill in the form → submit.
-3. You should land on the home page showing your nickname and avatar.
-4. Click **Sign out** → you return to the login screen.
-5. Log back in — you return to the home page.
+This is a sentimental student project, not a security-critical system — locks are designed for fun friction between friends, not to withstand a determined attacker with database access. That trade-off is intentional and documented here rather than hidden.
 
 ---
 
-## Project structure
+## 🌐 Deployment
 
-```
-gradvault/
-├── backend/
-│   ├── app/
-│   │   ├── core/          ← config.py, security.py (JWT + bcrypt)
-│   │   ├── models/        ← SQLAlchemy models (user.py, ...)
-│   │   ├── routers/       ← auth.py, users.py, ...
-│   │   ├── database.py    ← engine, session, Base
-│   │   ├── main.py        ← FastAPI app, CORS, router registration
-│   │   └── schemas.py     ← Pydantic request/response schemas
-│   ├── alembic/           ← migrations
-│   ├── alembic.ini
-│   ├── requirements.txt
-│   └── .env.example       ← copy to .env and fill in real values
-├── frontend/
-│   ├── src/
-│   │   ├── components/    ← LoginForm.jsx, SignupForm.jsx
-│   │   ├── context/       ← AuthContext.jsx (JWT stored in memory)
-│   │   ├── pages/         ← HomePage.jsx
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── index.css
-│   ├── index.html
-│   ├── package.json
-│   └── vite.config.js     ← proxies /api → http://127.0.0.1:8000
-├── .gitignore
-└── README.md
-```
+See [DEPLOY.md](./DEPLOY.md) for full deployment steps (Render/Railway for the backend + Postgres, Vercel/Netlify for the frontend). No Docker is used anywhere in this project.
 
 ---
 
-## Known limitations (Week 1)
+## ⚠️ Known Limitations
 
-- **JWT is in-memory only** — logging out on page refresh is intentional and safe. A refresh-token cookie flow will be added in a later week.
-- **CORS is dev-only** — `allow_origins=["http://localhost:5173"]` must be updated before production deployment.
+- Live-camera capture requires a device with a working camera; gallery upload is offered as a fallback.
+- Songs are played via YouTube embed rather than hosted audio — if a linked video is taken down or region-locked, playback will silently fail with a fallback message.
+- Uploaded media currently relies on the backend host's filesystem; for production persistence beyond a demo, this should be swapped for object storage (e.g. Cloudflare R2 or Supabase Storage).
+- Invite links grant access to anyone holding the link/code within its validity window — there is no identity verification beyond that.
+
+---
+
+## 👩‍💻 Developer
+
+Built by **Riya Bhart** — suggestions welcome at **riyabhart02@gmail.com**
