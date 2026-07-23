@@ -1,3 +1,6 @@
+import base64
+import html
+import io
 import json
 import os
 import re
@@ -8,19 +11,33 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+from PIL import Image as PILImage
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import (
+    HRFlowable,
+    Image as RLImage,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+)
+
 import bcrypt
 from fastapi import APIRouter, Depends, Form, HTTPException, status, File, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
 from app.database import get_db
 from app.models.entry import Entry
-from app.models.lock import EntryLock, EntryUnlock
+from app.models.lock import EntryLock, EntryUnlock, SiteConfig
 from app.models.thread import Thread, ThreadInvite, ThreadMember
 from app.models.entry_song import EntrySong
 from app.models.user import User
-from app.core.crypto import encrypt_content
-from app.core.storage import upload_media
+from app.core.crypto import decrypt_content, encrypt_content
+from app.core.storage import download_media, upload_media
 from app.schemas import (
     EntryMetadata,
     InviteCreate,
@@ -290,6 +307,294 @@ def get_thread(
 
 
 # ---------------------------------------------------------------------------
+# GET /threads/{id}/export — Downloadable PDF keepsake export
+# ---------------------------------------------------------------------------
+
+
+def _generate_export_pdf(thread_title: str, thread_type: str, export_user: str, entries: list) -> bytes:
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=36,
+        rightMargin=36,
+        topMargin=36,
+        bottomMargin=36,
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "PDFTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=20,
+        leading=24,
+        textColor=colors.HexColor("#0f172a"),
+        spaceAfter=6,
+    )
+
+    subtitle_style = ParagraphStyle(
+        "PDFSubtitle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor("#64748b"),
+        spaceAfter=15,
+    )
+
+    author_style = ParagraphStyle(
+        "PDFAuthor",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=12,
+        leading=16,
+        textColor=colors.HexColor("#1e293b"),
+        spaceAfter=2,
+    )
+
+    date_style = ParagraphStyle(
+        "PDFDate",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#64748b"),
+        spaceAfter=8,
+    )
+
+    body_style = ParagraphStyle(
+        "PDFBody",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=15,
+        textColor=colors.HexColor("#334155"),
+        spaceAfter=10,
+    )
+
+    notes_style = ParagraphStyle(
+        "PDFNotes",
+        parent=styles["Normal"],
+        fontName="Helvetica-Oblique",
+        fontSize=9,
+        leading=13,
+        textColor=colors.HexColor("#b45309"),
+        backColor=colors.HexColor("#fef3c7"),
+        borderPadding=6,
+        spaceAfter=8,
+    )
+
+    song_style = ParagraphStyle(
+        "PDFSong",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=9,
+        leading=13,
+        textColor=colors.HexColor("#6d28d9"),
+        spaceAfter=8,
+    )
+
+    empty_style = ParagraphStyle(
+        "PDFEmpty",
+        parent=styles["Normal"],
+        fontName="Helvetica-Oblique",
+        fontSize=11,
+        alignment=1,
+        textColor=colors.HexColor("#64748b"),
+        spaceBefore=40,
+    )
+
+    story = []
+
+    export_time = datetime.now().strftime("%B %d, %Y at %I:%M %p")
+    story.append(Paragraph(f"GradVault Keepsake: {html.escape(thread_title)}", title_style))
+    story.append(
+        Paragraph(
+            f"Capsule Type: {html.escape(thread_type.capitalize())} &nbsp;|&nbsp; Exported by: {html.escape(export_user)} &nbsp;|&nbsp; {export_time}",
+            subtitle_style,
+        )
+    )
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=15))
+
+    if not entries:
+        story.append(Paragraph("🔒 No unlocked entries available in this export.", empty_style))
+    else:
+        for idx, item in enumerate(entries):
+            type_label = f"[{item['type'].capitalize()}]"
+            story.append(Paragraph(f"{item['avatar']} {html.escape(item['author_name'])} {type_label}", author_style))
+            story.append(Paragraph(item["date"], date_style))
+
+            if item["type"] == "letter":
+                clean_text = html.escape(item["text_plain"]).replace("\n", "<br/>")
+                story.append(Paragraph(clean_text, body_style))
+
+            elif item["type"] == "photo" and item.get("media_bytes"):
+                try:
+                    img_bytes = item["media_bytes"]
+                    pil_img = PILImage.open(io.BytesIO(img_bytes))
+                    orig_w, orig_h = pil_img.size
+
+                    max_w = 480.0
+                    max_h = 450.0
+
+                    scale = min(max_w / orig_w, max_h / orig_h, 1.0)
+                    scaled_w = orig_w * scale
+                    scaled_h = orig_h * scale
+
+                    story.append(RLImage(io.BytesIO(img_bytes), width=scaled_w, height=scaled_h))
+                    story.append(Spacer(1, 8))
+                except Exception:
+                    story.append(Paragraph("[Image preview unavailable]", body_style))
+
+            elif item["type"] == "video":
+                story.append(Paragraph("🎥 [Video Entry Included in Thread]", body_style))
+
+            if item.get("notes"):
+                story.append(Paragraph(f"📌 Caption: {html.escape(item['notes'])}", notes_style))
+
+            if item.get("song"):
+                song = item["song"]
+                story.append(
+                    Paragraph(
+                        f"🎵 Attached Song: {html.escape(song.title)} by {html.escape(song.artist)}",
+                        song_style,
+                    )
+                )
+
+            if idx < len(entries) - 1:
+                if item["type"] == "photo":
+                    story.append(PageBreak())
+                else:
+                    story.append(Spacer(1, 10))
+                    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#e2e8f0"), spaceAfter=15))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+@router.get("/{thread_id}/export")
+def export_thread(
+    thread_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Export thread entries unlocked by current_user as a single downloadable PDF file.
+    Omits any entries not unlocked by the user or gated by site unlock_date.
+    """
+    thread = _get_thread_or_404(thread_id, db)
+    _assert_member(thread_id, current_user.id, db)
+
+    # Global site unlock gate check
+    cfg = db.query(SiteConfig).filter(SiteConfig.id == 1).first()
+    if cfg and cfg.unlock_date:
+        unlock_date = cfg.unlock_date if cfg.unlock_date.tzinfo else cfg.unlock_date.replace(tzinfo=timezone.utc)
+    else:
+        unlock_date = datetime(9999, 1, 1, tzinfo=timezone.utc)
+
+    is_global_unlocked = datetime.now(timezone.utc) >= unlock_date
+
+    # Member user map
+    raw_members = (
+        db.query(ThreadMember, User)
+        .join(User, ThreadMember.user_id == User.id)
+        .filter(ThreadMember.thread_id == thread_id)
+        .all()
+    )
+    user_map = {u.id: u for _, u in raw_members}
+
+    # Fetch entries in chronological order
+    entries = (
+        db.query(Entry)
+        .filter(Entry.thread_id == thread_id)
+        .order_by(Entry.created_at.asc())
+        .all()
+    )
+
+    unlocked_entries_data = []
+
+    if is_global_unlocked:
+        for entry in entries:
+            is_author = (entry.author_id == current_user.id)
+            lock = db.query(EntryLock).filter(EntryLock.entry_id == entry.id).first()
+            has_lock = lock is not None
+
+            is_unlocked = False
+            if is_author or not has_lock:
+                is_unlocked = True
+            else:
+                unlock_row = (
+                    db.query(EntryUnlock)
+                    .filter(EntryUnlock.entry_id == entry.id, EntryUnlock.user_id == current_user.id)
+                    .first()
+                )
+                is_unlocked = unlock_row is not None
+
+            if not is_unlocked:
+                continue
+
+            author = user_map.get(entry.author_id)
+            author_name = author.nickname if (author and author.nickname) else (author.username if author else f"User #{entry.author_id}")
+            avatar = author.avatar_sticker if (author and author.avatar_sticker) else "✉️"
+            formatted_date = entry.created_at.strftime("%B %d, %Y at %I:%M %p") if entry.created_at else ""
+
+            song_row = db.query(EntrySong).filter(EntrySong.entry_id == entry.id).first()
+
+            entry_item = {
+                "id": entry.id,
+                "type": entry.entry_type,
+                "author_name": author_name,
+                "avatar": avatar,
+                "date": formatted_date,
+                "song": song_row,
+                "text_plain": "",
+                "media_bytes": None,
+                "notes": "",
+            }
+
+            if entry.entry_type == "letter":
+                decrypted_text = decrypt_content(entry.text_content) or ""
+                entry_item["text_plain"] = decrypted_text
+
+            elif entry.entry_type in ("photo", "video"):
+                notes_text = decrypt_content(entry.notes) if entry.notes else None
+                if notes_text:
+                    entry_item["notes"] = notes_text
+
+                if entry.media_key:
+                    try:
+                        media_bytes = download_media(entry.media_key)
+                        entry_item["media_bytes"] = media_bytes
+                    except Exception:
+                        entry_item["media_bytes"] = None
+
+            unlocked_entries_data.append(entry_item)
+
+    pdf_bytes = _generate_export_pdf(
+        thread_title=thread.title,
+        thread_type=thread.type,
+        export_user=current_user.nickname or current_user.username,
+        entries=unlocked_entries_data,
+    )
+
+    safe_title = "".join(c for c in thread.title if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")
+    if not safe_title:
+        safe_title = f"thread_{thread.id}"
+    date_filename = datetime.now().strftime("%Y-%m-%d")
+    filename = f"gradvault-{safe_title}-{date_filename}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # POST /threads/{id}/invite — generate invite code (members only)
 # ---------------------------------------------------------------------------
 
@@ -441,7 +746,8 @@ def post_photo(
         )
 
     # 2. Validate MIME Type (must be an image)
-    if not file.content_type or not file.content_type.startswith("image/"):
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if not content_type or not content_type.startswith("image/"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only image files are allowed.",

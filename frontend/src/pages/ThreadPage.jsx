@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { apiCall } from '../context/api'
+import { apiCall, apiFetch } from '../context/api'
 import StreakBadge from '../components/StreakBadge'
 import { useAuth } from '../context/AuthContext'
 import InvitePanel from '../components/InvitePanel'
@@ -20,11 +20,9 @@ export default function ThreadPage() {
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState('letter') // 'letter' | 'photo'
   const [isSiteUnlocked, setIsSiteUnlocked] = useState(false)
-  // justUnlockedId — the entry ID that was unlocked in THIS session.
-  // Used to decide whether RevealedEntryCard should play its animation.
-  // Stays set after animation plays; does NOT reset on re-renders (that's intentional).
-  // On hard-refresh this starts null, so existing unlocked entries render statically.
   const [justUnlockedId, setJustUnlockedId] = useState(null)
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
 
   const fetchThreadDetails = useCallback(async () => {
     try {
@@ -48,6 +46,37 @@ export default function ThreadPage() {
       setJustUnlockedId(entryId)
     }
     fetchThreadDetails()
+  }
+
+  async function handleExportThread() {
+    setIsExporting(true)
+    setExportError('')
+    try {
+      const res = await apiFetch(`/threads/${id}/export`)
+      const blob = await res.blob()
+
+      let fileName = `gradvault-${data?.thread?.title || 'thread'}.pdf`
+      const contentDisposition = res.headers.get('content-disposition')
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/)
+        if (match && match[1]) {
+          fileName = match[1]
+        }
+      }
+
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      setExportError(err.message || 'Failed to export thread.')
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   if (loading) {
@@ -107,11 +136,22 @@ export default function ThreadPage() {
           <CountdownTimer onUnlockedChange={setIsSiteUnlocked} />
 
           <div className="thread-title-area">
-            <span className="thread-type-badge">{thread.type}</span>
+            <div className="title-top-row">
+              <span className="thread-type-badge">{thread.type}</span>
+              <button
+                className="btn-export-thread"
+                onClick={handleExportThread}
+                disabled={isExporting}
+                title="Download unlocked entries as a self-contained HTML keepsake"
+              >
+                {isExporting ? '⏳ Exporting...' : '📥 Export Thread'}
+              </button>
+            </div>
             <h1>{thread.title}</h1>
             <span className="thread-created-date">
               Created on {new Date(thread.created_at).toLocaleDateString()}
             </span>
+            {exportError && <p className="export-error">{exportError}</p>}
           </div>
 
           <div className="composer-tab-group">
