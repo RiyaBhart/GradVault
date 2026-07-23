@@ -36,6 +36,7 @@ from app.models.user import User
 from app.models.entry_song import EntrySong
 from app.schemas import LetterContent, UnlockAttempt, UnlockResult, EntrySongOut
 from app.core.crypto import decrypt_content
+from app.core.storage import download_media, delete_media
 
 router = APIRouter(prefix="/entries", tags=["entries"])
 
@@ -198,15 +199,15 @@ def _safe_notes_header(notes: str | None) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _stream_video(file_path: str, media_type: str, notes: str | None, request: Request) -> Response:
+def _stream_video_bytes(video_bytes: bytes, media_type: str, notes: str | None, request: Request) -> Response:
     """
-    Stream a video file with HTTP Range request support so the browser's
+    Stream video bytes with HTTP Range request support so the browser's
     <video> player can seek properly (RFC 7233).
 
-    Without Range header  → 200 + full file
+    Without Range header  → 200 + full bytes
     With Range header     → 206 Partial Content + slice
     """
-    file_size = os.path.getsize(file_path)
+    file_size = len(video_bytes)
     range_header = request.headers.get("range", "")
 
     headers = {
@@ -216,14 +217,8 @@ def _stream_video(file_path: str, media_type: str, notes: str | None, request: R
     }
 
     if not range_header:
-        # Full file streaming — no Range header
-        def _iter_full():
-            with open(file_path, "rb") as f:
-                while chunk := f.read(_VIDEO_CHUNK_SIZE):
-                    yield chunk
-
         headers["Content-Length"] = str(file_size)
-        return StreamingResponse(_iter_full(), status_code=200, headers=headers, media_type=media_type)
+        return Response(content=video_bytes, status_code=200, headers=headers, media_type=media_type)
 
     # Parse "bytes=start-end"
     try:
@@ -238,23 +233,10 @@ def _stream_video(file_path: str, media_type: str, notes: str | None, request: R
         headers_416 = {"Content-Range": f"bytes */{file_size}"}
         raise HTTPException(status_code=416, headers=headers_416, detail="Range not satisfiable.")
 
-    chunk_length = end - start + 1
-
-    def _iter_range():
-        with open(file_path, "rb") as f:
-            f.seek(start)
-            remaining = chunk_length
-            while remaining > 0:
-                read_size = min(_VIDEO_CHUNK_SIZE, remaining)
-                data = f.read(read_size)
-                if not data:
-                    break
-                remaining -= len(data)
-                yield data
-
+    chunk = video_bytes[start : end + 1]
     headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-    headers["Content-Length"] = str(chunk_length)
-    return StreamingResponse(_iter_range(), status_code=206, headers=headers, media_type=media_type)
+    headers["Content-Length"] = str(len(chunk))
+    return Response(content=chunk, status_code=206, headers=headers, media_type=media_type)
 
 
 # ---------------------------------------------------------------------------
@@ -384,16 +366,14 @@ def get_entry_content(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Photo media key is missing.",
             )
-        file_path = os.path.join(STORAGE_DIR, entry.media_key)
-        if not os.path.isfile(file_path):
+        try:
+            content_bytes = download_media(entry.media_key)
+        except FileNotFoundError:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Photo file not found on disk.",
+                detail="Photo file not found in storage.",
             )
         media_type = _media_type_from_key(entry.media_key)
-        # Read file and return with X-Entry-Notes header
-        with open(file_path, "rb") as f:
-            content_bytes = f.read()
         return Response(
             content=content_bytes,
             media_type=media_type,
@@ -406,17 +386,52 @@ def get_entry_content(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Video media key is missing.",
             )
-        file_path = os.path.join(VIDEOS_DIR, entry.media_key)
-        if not os.path.isfile(file_path):
+        try:
+            content_bytes = download_media(entry.media_key)
+        except FileNotFoundError:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Video file not found on disk.",
+                detail="Video file not found in storage.",
             )
         media_type = _media_type_from_key(entry.media_key)
-        return _stream_video(file_path, media_type, decrypt_content(entry.notes), request)
+        return _stream_video_bytes(content_bytes, media_type, decrypt_content(entry.notes), request)
 
     else:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Unknown entry type: {entry.entry_type!r}",
         )
+
+
+# ---------------------------------------------------------------------------
+# DELETE /entries/{entry_id} — delete entry & cleanup media from storage
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_entry(
+    entry_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete an entry. Only the author of the entry or an admin can delete it.
+    If the entry has associated media (photo/video), deletes the object from storage.
+    """
+    entry = db.query(Entry).filter(Entry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found.")
+
+    if entry.author_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to delete this entry.",
+        )
+
+    # If the entry has a media key, delete object from storage
+    if entry.media_key:
+        delete_media(entry.media_key)
+
+    db.delete(entry)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

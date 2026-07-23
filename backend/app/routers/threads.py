@@ -20,6 +20,7 @@ from app.models.thread import Thread, ThreadInvite, ThreadMember
 from app.models.entry_song import EntrySong
 from app.models.user import User
 from app.core.crypto import encrypt_content
+from app.core.storage import upload_media
 from app.schemas import (
     EntryMetadata,
     InviteCreate,
@@ -463,25 +464,24 @@ def post_photo(
     if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
         ext = ".jpg"  # Default fallback
 
-    filename = f"{uuid.uuid4().hex}{ext}"
-    os.makedirs(STORAGE_DIR, exist_ok=True)
-    file_path = os.path.join(STORAGE_DIR, filename)
+    unique_filename = f"{uuid.uuid4().hex}{ext}"
+    storage_path = f"{thread_id}/photos/{unique_filename}"
 
-    # 4. Save to disk (outside of statically served directories)
+    # 4. Upload to storage (Supabase or local fallback)
     try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception:
+        file_bytes = file.file.read()
+        media_key = upload_media(storage_path, file_bytes, content_type)
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to store the photo file.",
+            detail=f"Failed to store the photo file: {e}",
         )
 
     entry = Entry(
         thread_id=thread_id,
         author_id=current_user.id,
         entry_type="photo",
-        media_key=filename,  # Stored filename, not a public URL
+        media_key=media_key,  # Stored storage path, not a public URL
         notes=encrypt_content(clean_notes),
     )
     _update_streak(db, current_user)
@@ -590,25 +590,24 @@ def post_video(
             "video/quicktime": ".mov",
         }.get(content_type, ".webm")
 
-    filename = f"{uuid.uuid4().hex}{ext}"
-    os.makedirs(VIDEO_STORAGE_DIR, exist_ok=True)
-    file_path = os.path.join(VIDEO_STORAGE_DIR, filename)
+    unique_filename = f"{uuid.uuid4().hex}{ext}"
+    storage_path = f"{thread_id}/videos/{unique_filename}"
 
-    # 5. Save to disk
+    # 5. Upload to storage (Supabase or local fallback)
     try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception:
+        file_bytes = file.file.read()
+        media_key = upload_media(storage_path, file_bytes, content_type)
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to store the video file.",
+            detail=f"Failed to store the video file: {e}",
         )
 
     entry = Entry(
         thread_id=thread_id,
         author_id=current_user.id,
         entry_type="video",
-        media_key=filename,
+        media_key=media_key,
         notes=encrypt_content(clean_notes),
     )
     _update_streak(db, current_user)

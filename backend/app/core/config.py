@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     letter_encryption_key: str
+    supabase_url: str = ""
+    supabase_service_role_key: str = ""
+    supabase_bucket: str = "gradvault-media"
 
     class Config:
         env_file = ".env"
