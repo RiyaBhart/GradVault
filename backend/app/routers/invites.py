@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
@@ -32,9 +33,13 @@ def accept_invite(
     - use_count must be below max_uses (if max_uses is set).
     - If the user is already a member, returns 200 silently (idempotent).
     """
+    clean_code = code.strip().lower()
     invite: ThreadInvite | None = (
-        db.query(ThreadInvite).filter(ThreadInvite.code == code).first()
+        db.query(ThreadInvite)
+        .filter(func.lower(ThreadInvite.code) == clean_code)
+        .first()
     )
+
     if not invite:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

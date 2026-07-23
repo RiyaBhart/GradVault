@@ -160,7 +160,6 @@ class LetterCreate(BaseModel):
     text_content: str = Field(..., min_length=1)
     lock: Optional[LockCreate] = None
     youtube_url: Optional[str] = Field(default=None, max_length=500)
-    theme: Optional[str] = Field(default="classic", max_length=20)
 
 
 class EntryMetadata(BaseModel):
@@ -183,7 +182,6 @@ class EntryMetadata(BaseModel):
     is_unlocked: bool = False
     lock_type: Optional[str] = None
     riddle_question: Optional[str] = None
-    theme: str = "classic"
 
     model_config = {"from_attributes": True}
 
@@ -224,7 +222,6 @@ class EntrySongOut(BaseModel):
 class LetterContent(BaseModel):
     entry_type: Literal["letter"]
     text_content: str
-    theme: str
     song: Optional["EntrySongOut"] = None
 
 

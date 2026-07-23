@@ -35,6 +35,7 @@ from app.models.thread import ThreadMember
 from app.models.user import User
 from app.models.entry_song import EntrySong
 from app.schemas import LetterContent, UnlockAttempt, UnlockResult, EntrySongOut
+from app.core.crypto import decrypt_content
 
 router = APIRouter(prefix="/entries", tags=["entries"])
 
@@ -131,7 +132,7 @@ def _get_unlock_date(db: Session) -> datetime:
         return datetime(9999, 1, 1, tzinfo=timezone.utc)
     if cfg.unlock_date.tzinfo is None:
         return cfg.unlock_date.replace(tzinfo=timezone.utc)
-    return cfg.unlock_date
+    return cfg.unlock_date.astimezone(timezone.utc)
 
 
 def _assert_global_gate(db: Session) -> None:
@@ -145,7 +146,15 @@ def _assert_global_gate(db: Session) -> None:
 
 
 def _assert_user_unlocked(entry_id: int, user_id: int, db: Session) -> None:
-    """Raise 403 if the user does not have an entry_unlocks row for this entry."""
+    """
+    Raise 403 if the user does not have an entry_unlocks row for a locked entry.
+    Entries without custom locks (EntryLock is None) do not require a per-user
+    guess — they are controlled solely by the global site unlock_date gate.
+    """
+    entry_lock = db.query(EntryLock).filter(EntryLock.entry_id == entry_id).first()
+    if entry_lock is None:
+        return
+
     row = (
         db.query(EntryUnlock)
         .filter(EntryUnlock.entry_id == entry_id, EntryUnlock.user_id == user_id)
@@ -365,8 +374,7 @@ def get_entry_content(
         song_data = EntrySongOut.model_validate(song_row) if song_row else None
         return LetterContent(
             entry_type="letter",
-            text_content=entry.text_content,
-            theme=entry.theme,
+            text_content=decrypt_content(entry.text_content) or "",
             song=song_data,
         )
 
@@ -389,7 +397,7 @@ def get_entry_content(
         return Response(
             content=content_bytes,
             media_type=media_type,
-            headers={"X-Entry-Notes": _safe_notes_header(entry.notes)},
+            headers={"X-Entry-Notes": _safe_notes_header(decrypt_content(entry.notes))},
         )
 
     elif entry.entry_type == "video":
@@ -405,7 +413,7 @@ def get_entry_content(
                 detail="Video file not found on disk.",
             )
         media_type = _media_type_from_key(entry.media_key)
-        return _stream_video(file_path, media_type, entry.notes, request)
+        return _stream_video(file_path, media_type, decrypt_content(entry.notes), request)
 
     else:
         raise HTTPException(

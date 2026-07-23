@@ -6,7 +6,6 @@ import SongPicker from './SongPicker'
 
 export default function LetterComposer({ threadId, onPost }) {
   const [content, setContent] = useState('')
-  const [theme, setTheme] = useState('classic')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const lockPickerRef = useRef(null)
@@ -39,8 +38,7 @@ export default function LetterComposer({ threadId, onPost }) {
       await apiCall(`/threads/${threadId}/entries/letter`, {
         method: 'POST',
         body: JSON.stringify({
-          text_content: content.trim(),
-          theme,
+          text_content: content,
           ...(lock ? { lock } : {}),
           ...(youtube_url ? { youtube_url } : {}),
         }),
@@ -73,15 +71,6 @@ export default function LetterComposer({ threadId, onPost }) {
         />
 
         <LockPicker ref={lockPickerRef} />
-
-        <div className="theme-picker">
-          <span className="theme-picker-title">Theme <span className="optional-tag">optional</span></span>
-          <div className="theme-options">
-            <button type="button" className={`theme-btn ${theme === 'classic' ? 'active' : ''}`} onClick={() => setTheme('classic')}>📜 Classic</button>
-            <button type="button" className={`theme-btn ${theme === 'floral' ? 'active' : ''}`} onClick={() => setTheme('floral')}>🌸 Floral</button>
-            <button type="button" className={`theme-btn ${theme === 'night' ? 'active' : ''}`} onClick={() => setTheme('night')}>🌌 Night</button>
-          </div>
-        </div>
 
         <SongPicker ref={songPickerRef} />
 

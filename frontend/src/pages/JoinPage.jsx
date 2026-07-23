@@ -21,7 +21,8 @@ export default function JoinPage() {
 
     async function acceptInvite() {
       try {
-        const result = await apiCall(`/invites/${code}/accept`, {
+        const cleanCode = code ? code.trim().toUpperCase() : ''
+        const result = await apiCall(`/invites/${cleanCode}/accept`, {
           method: 'POST',
         })
         // Redirect to the newly joined thread

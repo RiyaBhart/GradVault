@@ -19,6 +19,7 @@ from app.models.lock import EntryLock, EntryUnlock
 from app.models.thread import Thread, ThreadInvite, ThreadMember
 from app.models.entry_song import EntrySong
 from app.models.user import User
+from app.core.crypto import encrypt_content
 from app.schemas import (
     EntryMetadata,
     InviteCreate,
@@ -33,7 +34,7 @@ from app.schemas import (
 
 router = APIRouter(prefix="/threads", tags=["threads"])
 
-_INVITE_ALPHABET = string.ascii_letters + string.digits
+_INVITE_ALPHABET = string.ascii_uppercase + string.digits
 
 # Characters stripped during riddle normalization (mirrors entries.py)
 _STRIP_PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
@@ -143,8 +144,7 @@ def _create_entry_lock(db: Session, entry_id: int, lock: LockCreate) -> None:
 
 def _build_entry_metadata(
     db: Session, entry_id: int, entry_thread_id: int, entry_author_id: int,
-    entry_type: str, entry_created_at: datetime, current_user_id: int,
-    theme: str
+    entry_type: str, entry_created_at: datetime, current_user_id: int
 ) -> EntryMetadata:
     """Build an EntryMetadata with lock state for the requesting user."""
     lock = db.query(EntryLock).filter(EntryLock.entry_id == entry_id).first()
@@ -152,7 +152,7 @@ def _build_entry_metadata(
     lock_type = lock.lock_type if lock else None
     riddle_question = lock.riddle_question if (lock and lock.lock_type == "riddle") else None
 
-    is_unlocked = False
+    is_unlocked = not has_lock
     if has_lock:
         unlock_row = (
             db.query(EntryUnlock)
@@ -174,7 +174,6 @@ def _build_entry_metadata(
         is_unlocked=is_unlocked,
         lock_type=lock_type,
         riddle_question=riddle_question,
-        theme=theme,
     )
 
 
@@ -264,7 +263,6 @@ def get_thread(
             Entry.author_id,
             Entry.entry_type,
             Entry.created_at,
-            Entry.theme,
         )
         .filter(Entry.thread_id == thread_id)
         .order_by(Entry.created_at.desc())
@@ -279,7 +277,6 @@ def get_thread(
             entry_type=row.entry_type,
             entry_created_at=row.created_at,
             current_user_id=current_user.id,
-            theme=row.theme,
         )
         for row in raw_entries
     ]
@@ -371,8 +368,7 @@ def post_letter(
         thread_id=thread_id,
         author_id=current_user.id,
         entry_type="letter",
-        text_content=payload.text_content,  # stored but never returned via API
-        theme=payload.theme,
+        text_content=encrypt_content(payload.text_content),  # stored but never returned via API
     )
     _update_streak(db, current_user)
     db.add(entry)
@@ -400,7 +396,6 @@ def post_letter(
         entry_type=entry.entry_type,
         entry_created_at=entry.created_at,
         current_user_id=current_user.id,
-        theme=entry.theme,
     )
 
 
@@ -423,7 +418,6 @@ def post_photo(
     lock_passcode: Optional[str] = Form(default=None),
     lock_riddle_question: Optional[str] = Form(default=None),
     lock_riddle_answer: Optional[str] = Form(default=None),
-    theme: Optional[str] = Form(default="classic"),
     # Optional caption (≤ MAX_NOTES_LENGTH chars) — locked with the entry.
     notes: Optional[str] = Form(default=None),
     current_user: User = Depends(get_current_user),
@@ -488,8 +482,7 @@ def post_photo(
         author_id=current_user.id,
         entry_type="photo",
         media_key=filename,  # Stored filename, not a public URL
-        theme=theme,
-        notes=clean_notes,
+        notes=encrypt_content(clean_notes),
     )
     _update_streak(db, current_user)
     db.add(entry)
@@ -517,7 +510,6 @@ def post_photo(
         entry_type=entry.entry_type,
         entry_created_at=entry.created_at,
         current_user_id=current_user.id,
-        theme=entry.theme,
     )
 
 
@@ -538,7 +530,6 @@ def post_video(
     lock_passcode: Optional[str] = Form(default=None),
     lock_riddle_question: Optional[str] = Form(default=None),
     lock_riddle_answer: Optional[str] = Form(default=None),
-    theme: Optional[str] = Form(default="classic"),
     notes: Optional[str] = Form(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -618,8 +609,7 @@ def post_video(
         author_id=current_user.id,
         entry_type="video",
         media_key=filename,
-        theme=theme,
-        notes=clean_notes,
+        notes=encrypt_content(clean_notes),
     )
     _update_streak(db, current_user)
     db.add(entry)
@@ -646,5 +636,4 @@ def post_video(
         entry_type=entry.entry_type,
         entry_created_at=entry.created_at,
         current_user_id=current_user.id,
-        theme=entry.theme,
     )

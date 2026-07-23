@@ -14,8 +14,7 @@ def test_global_gate_blocks_future(client, db_session, test_user, test_thread, a
         thread_id=test_thread.id,
         author_id=test_user.id,
         entry_type="letter",
-        text_content="Hello future!",
-        theme="classic"
+        text_content="Hello future!"
     )
     db_session.add(entry)
     db_session.commit()
@@ -35,8 +34,7 @@ def test_global_gate_passes_past(client, db_session, test_user, test_thread, aut
         thread_id=test_thread.id,
         author_id=test_user.id,
         entry_type="letter",
-        text_content="Hello past!",
-        theme="classic"
+        text_content="Hello past!"
     )
     db_session.add(entry)
     db_session.commit()
@@ -54,8 +52,7 @@ def test_per_user_lock_blocks(client, db_session, test_user, test_thread, auth_h
         thread_id=test_thread.id,
         author_id=test_user.id,
         entry_type="letter",
-        text_content="Secret message",
-        theme="classic"
+        text_content="Secret message"
     )
     db_session.add(entry)
     db_session.commit()
@@ -79,8 +76,7 @@ def test_per_user_lock_unlocks_with_passcode(client, db_session, test_user, test
         thread_id=test_thread.id,
         author_id=test_user.id,
         entry_type="letter",
-        text_content="Secret message",
-        theme="classic"
+        text_content="Secret message"
     )
     db_session.add(entry)
     db_session.commit()
@@ -122,8 +118,7 @@ def test_per_user_lock_unlocks_with_riddle(client, db_session, test_user, test_t
         thread_id=test_thread.id,
         author_id=test_user.id,
         entry_type="letter",
-        text_content="Secret message",
-        theme="classic"
+        text_content="Secret message"
     )
     db_session.add(entry)
     db_session.commit()

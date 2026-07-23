@@ -32,7 +32,13 @@ export async function apiCall(endpoint, options = {}) {
     let errorDetail = "API Error";
     try {
       const errData = await response.json();
-      errorDetail = errData.detail || errorDetail;
+      if (Array.isArray(errData.detail)) {
+        errorDetail = errData.detail.map(d => `${(d.loc || []).join('.')}: ${d.msg}`).join(', ');
+      } else if (typeof errData.detail === 'string') {
+        errorDetail = errData.detail;
+      } else if (errData.detail) {
+        errorDetail = JSON.stringify(errData.detail);
+      }
     } catch {
       // Not JSON or empty body
     }
@@ -79,7 +85,13 @@ export async function apiFetch(endpoint, options = {}) {
     let errorDetail = "API Error";
     try {
       const errData = await response.json();
-      errorDetail = errData.detail || errorDetail;
+      if (Array.isArray(errData.detail)) {
+        errorDetail = errData.detail.map(d => `${(d.loc || []).join('.')}: ${d.msg}`).join(', ');
+      } else if (typeof errData.detail === 'string') {
+        errorDetail = errData.detail;
+      } else if (errData.detail) {
+        errorDetail = JSON.stringify(errData.detail);
+      }
     } catch {
       // Not JSON or empty body
     }

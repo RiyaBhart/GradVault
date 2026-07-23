@@ -73,7 +73,12 @@ def update_site_config(
         UPDATE users SET is_admin = true WHERE username = 'your_username';
     """
     cfg = _get_config(db)
-    cfg.unlock_date = payload.unlock_date
+    new_date = payload.unlock_date
+    if new_date.tzinfo is None:
+        new_date = new_date.replace(tzinfo=timezone.utc)
+    else:
+        new_date = new_date.astimezone(timezone.utc)
+    cfg.unlock_date = new_date
     db.commit()
     db.refresh(cfg)
     return SiteConfigResponse(

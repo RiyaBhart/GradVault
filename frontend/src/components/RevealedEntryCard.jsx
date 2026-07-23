@@ -16,7 +16,7 @@ import GlassPanel from './GlassPanel'
  */
 export default function RevealedEntryCard({ entry, members, playAnimation }) {
   // content shape:
-  //   { type: 'letter', text, theme, song }
+  //   { type: 'letter', text, song }
   //   { type: 'photo',  blobUrl, notes }
   //   { type: 'video',  blobUrl, notes }
   const [content, setContent] = useState(null)
@@ -77,7 +77,7 @@ export default function RevealedEntryCard({ entry, members, playAnimation }) {
 
         } else {
           const data = await response.json()
-          if (!cancelled) setContent({ type: 'letter', text: data.text_content, theme: data.theme, song: data.song })
+          if (!cancelled) setContent({ type: 'letter', text: data.text_content, song: data.song })
         }
       } catch (err) {
         if (!cancelled) setError(err.message || 'Could not load content.')
@@ -150,7 +150,7 @@ export default function RevealedEntryCard({ entry, members, playAnimation }) {
                   </div>
                 )}
                 <div className={`letter-content-reveal ${animState === 'playing' ? 'content-hidden' : 'content-visible'}`}>
-                  <div className={`letter-paper theme-${content.theme || 'classic'}`}>
+                  <div className={`letter-paper theme-classic`}>
                     <div className="letter-date-stamp">{formattedDate2}</div>
                     <p className="letter-text">{content.text}</p>
                     {songError && (

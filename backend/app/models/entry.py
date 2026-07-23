@@ -29,8 +29,7 @@ class Entry(Base):
     )
     # 'letter' | 'photo' | 'video'
     entry_type: Mapped[str] = mapped_column(String(10), nullable=False, default="letter")
-    # 'classic' | 'floral' | 'night'
-    theme: Mapped[str] = mapped_column(String(20), nullable=False, default="classic")
+
     # ------------------------------------------------------------------ LOCKED
     # These columns must NEVER appear in any API response schema.
     text_content: Mapped[str | None] = mapped_column(Text, nullable=True)
