@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import PasswordInput from './PasswordInput'
 
 const AVATAR_OPTIONS = ['✉️', '📸', '🌙', '⭐', '🌸', '🎵', '🦋', '🔮']
 
@@ -8,6 +9,7 @@ export default function SignupForm({ onSwitch }) {
   const [username, setUsername] = useState('')
   const [nickname, setNickname] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [avatarSticker, setAvatarSticker] = useState('✉️')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -18,6 +20,11 @@ export default function SignupForm({ onSwitch }) {
 
     if (password.length < 8) {
       setError('Password must be at least 8 characters.')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError("Passwords don't match.")
       return
     }
 
@@ -94,12 +101,22 @@ export default function SignupForm({ onSwitch }) {
 
         <div className="field-group">
           <label htmlFor="signup-password">Password <span className="hint">(min 8 chars)</span></label>
-          <input
+          <PasswordInput
             id="signup-password"
-            type="password"
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </div>
+
+        <div className="field-group">
+          <label htmlFor="signup-confirm-password">Confirm Password</label>
+          <PasswordInput
+            id="signup-confirm-password"
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
             required
           />
         </div>

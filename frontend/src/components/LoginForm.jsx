@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import PasswordInput from './PasswordInput'
 
 export default function LoginForm() {
   const { setAuth } = useAuth()
@@ -47,9 +48,8 @@ export default function LoginForm() {
 
         <div className="field-group">
           <label htmlFor="login-password">Password</label>
-          <input
+          <PasswordInput
             id="login-password"
-            type="password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
